@@ -47,8 +47,11 @@
   </div>
 
 <script>
-  // --- CONFIGURAR ESTA VARIABLE con la URL de tu Web App (Apps Script) ---
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbx871ybSKSygi9uaY3OsctT_MGj10vq5JFUfEtbbtz1G5YUUE8PUNKi9B0Ei2q-fMe0/exec';
+  // URL directa del Apps Script (cópiala EXACTA aquí, entre las comillas)
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx871ybSKSygi9uaY3OsctT_MGj10vq5JFUfEtbbtz1G5YUUE8PUNKi9B0Ei2q-fMe0/exec";
+
+  // Usamos un proxy CORS; construimos la URL con encodeURIComponent para evitar tokens inválidos
+  const WEB_APP_URL = "https://corsproxy.io/?" + encodeURIComponent(SCRIPT_URL);
 
   // mantener conteo local para visualizar inmediatamente (opcional)
   let state = {happy:0, neutral:0, sad:0, last: null};
@@ -61,34 +64,49 @@
   }
 
   async function sendVote(opcion){
-    // intentar enviar al endpoint
     try {
       const payload = { opcion: opcion, origen: location.hostname || 'public' };
+      // log para debug (se verá en la consola)
+      console.log("Enviando a:", WEB_APP_URL);
       const res = await fetch(WEB_APP_URL, {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload),
         mode: 'cors'
       });
-      const j = await res.json();
-      // si fue ok: actualizar UI local
+
+      // si la respuesta no es OK, lanzar para catch
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error("HTTP " + res.status + " - " + text);
+      }
+
+      // intentar parsear JSON (puede fallar si el proxy responde distinto)
+      let j;
+      try { j = await res.json(); } catch(err) { 
+        // mostrar contenido crudo si no es JSON
+        const txt = await res.text();
+        console.warn("Respuesta no-JSON:", txt);
+        throw err;
+      }
+
       if(j && j.result === 'success'){
         state[opcion] = (state[opcion]||0) + 1;
         state.last = new Date().toISOString();
         updateUI();
+        console.log("Voto guardado:", j);
       } else {
-        // fallo en respuesta: igualmente incrementar local y notificar
         state[opcion] = (state[opcion]||0) + 1;
         state.last = new Date().toISOString();
         updateUI();
         console.warn('Respuesta inesperada', j);
       }
     } catch (err) {
-      // si falla la conexión, guardar localmente (offline)
       state[opcion] = (state[opcion]||0) + 1;
       state.last = new Date().toISOString();
       updateUI();
       console.error('Error al enviar voto:', err);
+      alert("No se pudo enviar el voto al servidor. Revisa la consola para más detalles.");
     }
   }
 
@@ -115,6 +133,7 @@
 </script>
 </body>
 </html>
+
 
 
 

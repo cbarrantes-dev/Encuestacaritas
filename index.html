@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Encuesta de Caritas</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f4f6fb;margin:0}
+    .card{background:#fff;padding:28px;border-radius:12px;box-shadow:0 10px 28px rgba(15,20,40,0.06);max-width:720px;width:95%}
+    h1{margin:0 0 8px;font-size:1.6rem}
+    .row{display:flex;gap:14px;justify-content:space-between;margin-top:16px}
+    .face{flex:1;display:flex;flex-direction:column;align-items:center;padding:18px;border-radius:10px;cursor:pointer;user-select:none;border:1px solid #eee}
+    .emoji{font-size:72px}
+    .label{margin-top:10px;font-weight:600}
+    .counts{display:flex;gap:8px;margin-top:14px;justify-content:space-between}
+    button{margin-top:14px;padding:10px 12px;border-radius:8px;border:0;background:#111;color:#fff;cursor:pointer}
+    .small{font-size:13px;color:#666;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <h1>¿Cómo fue tu experiencia en la semana Toulouse?</h1>
+    <div class="small">Toca una carita para votar. Resultado centralizado en Google Sheets.</div>
+
+    <div class="row" id="options">
+      <div class="face" data-key="happy" tabindex="0">
+        <div class="emoji">😃</div>
+        <div class="label">Satisfecho</div>
+        <div class="count" id="c-happy">0</div>
+      </div>
+      <div class="face" data-key="neutral" tabindex="0">
+        <div class="emoji">😐</div>
+        <div class="label">Neutral</div>
+        <div class="count" id="c-neutral">0</div>
+      </div>
+      <div class="face" data-key="sad" tabindex="0">
+        <div class="emoji">😞</div>
+        <div class="label">Insatisfecho</div>
+        <div class="count" id="c-sad">0</div>
+      </div>
+    </div>
+
+    <div class="counts" id="meta">
+      <div>Último voto: <span id="last">—</span></div>
+      <div><button id="export">Exportar CSV local</button></div>
+    </div>
+  </div>
+
+<script>
+  // --- CONFIGURAR ESTA VARIABLE con la URL de tu Web App (Apps Script) ---
+  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyQFfIrdBstVdQRyRLbz_lMk1e4KvHlC-8plPT7bljIT7a5plS0aYR4jqePIu58aP8I/exec';
+
+  // mantener conteo local para visualizar inmediatamente (opcional)
+  let state = {happy:0, neutral:0, sad:0, last: null};
+
+  function updateUI(){
+    document.getElementById('c-happy').textContent = state.happy;
+    document.getElementById('c-neutral').textContent = state.neutral;
+    document.getElementById('c-sad').textContent = state.sad;
+    document.getElementById('last').textContent = state.last ? new Date(state.last).toLocaleString() : '—';
+  }
+
+  async function sendVote(opcion){
+    // intentar enviar al endpoint
+    try {
+      const payload = { opcion: opcion, origen: location.hostname || 'public' };
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+        mode: 'cors'
+      });
+      const j = await res.json();
+      // si fue ok: actualizar UI local
+      if(j && j.result === 'success'){
+        state[opcion] = (state[opcion]||0) + 1;
+        state.last = new Date().toISOString();
+        updateUI();
+      } else {
+        // fallo en respuesta: igualmente incrementar local y notificar
+        state[opcion] = (state[opcion]||0) + 1;
+        state.last = new Date().toISOString();
+        updateUI();
+        console.warn('Respuesta inesperada', j);
+      }
+    } catch (err) {
+      // si falla la conexión, guardar localmente (offline)
+      state[opcion] = (state[opcion]||0) + 1;
+      state.last = new Date().toISOString();
+      updateUI();
+      console.error('Error al enviar voto:', err);
+    }
+  }
+
+  document.querySelectorAll('.face').forEach(el=>{
+    el.addEventListener('click', ()=> {
+      const k = el.dataset.key;
+      sendVote(k);
+    });
+    el.addEventListener('keydown', ev=> { if(ev.key==='Enter' || ev.key===' ') sendVote(el.dataset.key); });
+  });
+
+  // exportar log local (solo para debug)
+  document.getElementById('export').addEventListener('click', ()=>{
+    const rows = [['fecha','opcion']];
+    const now = new Date().toISOString();
+    rows.push([now,'snapshot']);
+    const csv = rows.map(r=> r.map(c=> `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'votos_snapshot.csv'; a.click();
+  });
+
+  // init UI
+  updateUI();
+</script>
+</body>
+</html>
